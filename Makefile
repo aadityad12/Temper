@@ -1,4 +1,4 @@
-.PHONY: run-cloud run-cloud-offline run-mock validate-schemas install-cloud install-local demo test-local test-cloud
+.PHONY: run-cloud run-cloud-offline run-mock validate-schemas install-cloud install-local demo test-local test-cloud test-integration
 
 install-cloud:
 	cd cloud && python -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -11,6 +11,9 @@ run-cloud:
 
 run-cloud-offline:
 	cd cloud && CLOUD_OFFLINE=true .venv/bin/python main.py
+
+test-integration:
+	cd local && CLOUD_OFFLINE=true .venv/bin/python test_integration.py
 
 test-cloud:
 	git checkout fixtures/villain_env/ && rm -f fixtures/villain_env/skills/get_order_usage.md fixtures/villain_env/tools/get_order.json
