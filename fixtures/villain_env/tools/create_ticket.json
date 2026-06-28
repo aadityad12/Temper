@@ -1,0 +1,26 @@
+{
+  "name": "create_ticket",
+  "description": "Create a support ticket for issues that require engineering follow-up.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Short title for the ticket."
+      },
+      "description": {
+        "type": "string",
+        "description": "Detailed description of the issue."
+      },
+      "priority": {
+        "type": "string",
+        "description": "Priority level of the ticket."
+      },
+      "category": {
+        "type": "string",
+        "description": "Category of the issue."
+      }
+    },
+    "required": ["title", "description"]
+  }
+}
