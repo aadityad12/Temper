@@ -35,8 +35,8 @@ from config import CLOUD_OFFLINE, DEEPSEEK_MODEL, GEMINI_MODEL, HOST_URL, PORT
 from session import (
     S_AWAITING, S_GENERATING, S_JUDGING, S_READY, S_REGISTERED,
     Question, Room, Session,
-    create_room, create_session, get_room,
-    get_session,
+    bind_session_to_room, create_room, create_session, get_room,
+    get_room_for_session, get_session,
 )
 
 app = FastAPI(title="TEMPER Cloud Server", version="0.2.0")
@@ -315,8 +315,6 @@ async def _process_single_question(sess: Session, room: Room, question: Question
         "baseline_output_tokens": question.baseline_output_tokens,
     })
 
-    sess.questions_judged += 1
-
     # 5. Auto-finalize when all questions are judged
     if sess.all_judged():
         await _pi_finalize(sess, room)
@@ -326,6 +324,27 @@ async def _pi_finalize(sess: Session, room: Room) -> None:
     """Aggregate results + generate patches, then push session_complete."""
     loop = asyncio.get_event_loop()
     sess.status = S_JUDGING
+
+    if sess.bench_mode:
+        q = sess.questions[0]
+        r = q.judge_result or {"baseline_score": 0, "harness_score": 0, "verdict": ""}
+        delta = r["harness_score"] - r["baseline_score"]
+        sess.report = {
+            "dimensions": {
+                "coding_bench": {
+                    "baseline_score": r["baseline_score"],
+                    "harness_score": r["harness_score"],
+                    "delta": delta,
+                    "verdict": r.get("verdict", ""),
+                    "status": "PASSING" if delta >= 0 else "NEEDS_PATCH",
+                }
+            }
+        }
+        sess.patches = []
+        sess.status = S_READY
+        print(f"[pi-pipeline] {sess.session_id}: bench complete")
+        await room.push({"type": "session_complete", "report": sess.report, "patches": []})
+        return
 
     try:
         from judge import judge_all
@@ -470,6 +489,7 @@ async def register(body: RegisterBody):
         sess = create_session(bundle=body.bundle, pi_mode=True)
         sess.bench_mode = body.bench
         room.session_id = sess.session_id
+        bind_session_to_room(sess.session_id, room.room_id)
         sess.status = S_GENERATING
 
         # Push event so dashboard knows Pi connected
@@ -524,21 +544,11 @@ async def submit_answer(body: SubmitBody):
 
     # Pi mode: trigger per-question baseline + judge in background
     if sess.pi_mode:
-        from session import get_room
-        # Find the room associated with this session
-        room = _find_room_for_session(body.session_id)
+        room = get_room_for_session(body.session_id)
         if room:
             asyncio.create_task(_process_single_question(sess, room, question))
 
     return {"received": True}
-
-
-def _find_room_for_session(session_id: str) -> Room | None:
-    from session import _rooms
-    for room in _rooms.values():
-        if room.session_id == session_id:
-            return room
-    return None
 
 
 @app.get("/results")

@@ -56,9 +56,6 @@ class Session:
     report: dict | None = None
     patches: list[dict] = field(default_factory=list)
 
-    # Track how many questions have been fully judged (pi_mode)
-    questions_judged: int = 0
-
     def next_question(self) -> Question | None:
         if self.q_cursor < len(self.questions):
             q = self.questions[self.q_cursor]
@@ -127,6 +124,7 @@ _sessions: dict[str, Session] = {}
 _rooms: dict[str, Room] = {}
 _join_token_to_room: dict[str, str] = {}       # one-time join token → room_id
 _dashboard_key_to_room: dict[str, str] = {}    # reusable dashboard key → room_id
+_session_to_room_id: dict[str, str] = {}       # session_id → room_id
 
 
 def create_session(
@@ -169,6 +167,15 @@ def create_room() -> Room:
 
 def get_room(room_id: str) -> Room | None:
     return _rooms.get(room_id)
+
+
+def bind_session_to_room(session_id: str, room_id: str) -> None:
+    _session_to_room_id[session_id] = room_id
+
+
+def get_room_for_session(session_id: str) -> Room | None:
+    rid = _session_to_room_id.get(session_id)
+    return _rooms.get(rid) if rid else None
 
 
 def get_room_by_join_token(token: str) -> Room | None:
