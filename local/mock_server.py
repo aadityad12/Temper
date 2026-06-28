@@ -304,6 +304,8 @@ def results(session_id: str = Query(...)):
                 "delta": data["delta"],
                 "root_cause": data.get("root_cause"),
                 "fixable": data["fixable"],
+                "status": data.get("status"),
+                "structural_reason": data.get("structural_reason"),
             }
             for dim, data in sample["dimensions"].items()
         }

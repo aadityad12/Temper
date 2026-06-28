@@ -1,4 +1,4 @@
-.PHONY: run-cloud run-mock validate-schemas install-cloud install-local
+.PHONY: run-cloud run-mock validate-schemas install-cloud install-local demo test-local
 
 install-cloud:
 	cd cloud && python -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -11,6 +11,12 @@ run-cloud:
 
 run-mock:
 	cd local && .venv/bin/python mock_server.py
+
+demo:
+	cd local && .venv/bin/python demo.py
+
+test-local:
+	cd local && TEMPER_OFFLINE=true .venv/bin/python eval.py && TEMPER_OFFLINE=true .venv/bin/python patch.py
 
 validate-schemas:
 	cd local && .venv/bin/python -c "\

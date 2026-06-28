@@ -1,0 +1,25 @@
+{
+  "session_id": "demo_sess_post",
+  "report": {
+    "dimensions": {
+      "tool_accuracy": {
+        "baseline_score": 72,
+        "harness_score": 79,
+        "delta": 7,
+        "root_cause": null,
+        "fixable": true,
+        "status": "RESOLVED",
+        "structural_reason": null
+      },
+      "instruction_adherence": {
+        "baseline_score": 71,
+        "harness_score": 82,
+        "delta": 11,
+        "root_cause": null,
+        "fixable": true,
+        "status": "RESOLVED",
+        "structural_reason": null
+      }
+    }
+  }
+}

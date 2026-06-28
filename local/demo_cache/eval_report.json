@@ -1,0 +1,61 @@
+{
+  "session_id": "demo_sess_pre",
+  "report": {
+    "dimensions": {
+      "instruction_adherence": {
+        "baseline_score": 71,
+        "harness_score": 44,
+        "delta": -27,
+        "root_cause": "System prompt contains two contradictory instructions: 'always respond formally' and 'respond conversationally to greetings'. The model defaults to the latter, violating the former.",
+        "fixable": true,
+        "status": "NEEDS_PATCH",
+        "structural_reason": null
+      },
+      "tool_accuracy": {
+        "baseline_score": 72,
+        "harness_score": 31,
+        "delta": -41,
+        "root_cause": "Tool definition for get_order lacks an enum or format constraint on order_id. The model produces plausible-looking but incorrect order id formats 70% of the time.",
+        "fixable": true,
+        "status": "NEEDS_PATCH",
+        "structural_reason": null
+      },
+      "output_format": {
+        "baseline_score": 88,
+        "harness_score": 85,
+        "delta": -3,
+        "root_cause": null,
+        "fixable": true,
+        "status": "PASSING",
+        "structural_reason": null
+      },
+      "skill_trigger": {
+        "baseline_score": 60,
+        "harness_score": 52,
+        "delta": -8,
+        "root_cause": "The 'escalate' skill trigger is too broad \u2014 it fires on any mention of money, not just billing disputes. Causes false-positive escalations on pricing questions.",
+        "fixable": true,
+        "status": "NEEDS_PATCH",
+        "structural_reason": null
+      },
+      "latency_delta": {
+        "baseline_score": 90,
+        "harness_score": 74,
+        "delta": -16,
+        "root_cause": "Harness adds ~340ms overhead per call due to prepending all skill files regardless of relevance.",
+        "fixable": true,
+        "status": "NEEDS_PATCH",
+        "structural_reason": null
+      },
+      "error_recovery": {
+        "baseline_score": 38,
+        "harness_score": 35,
+        "delta": -3,
+        "root_cause": "Model consistently fails to self-correct malformed JSON tool calls. No harness-level skill can reliably prompt self-correction of this failure mode.",
+        "fixable": false,
+        "status": "STRUCTURAL_LIMITATION",
+        "structural_reason": "Self-correction of malformed tool calls requires the model to recognise its own output error. This is a model-capability ceiling \u2014 the harness cannot supply a recovery path the model does not have the capacity to execute. Fix: upgrade to a model with stronger tool-use self-correction, or add a post-processing validation layer in the application code."
+      }
+    }
+  }
+}

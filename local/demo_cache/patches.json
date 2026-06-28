@@ -1,0 +1,17 @@
+[
+  {
+    "type": "tool_definition",
+    "filename": "tools/get_order.json",
+    "content": "{\n  \"name\": \"get_order\",\n  \"description\": \"Retrieve order details by order id.\",\n  \"parameters\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"order_id\": {\n        \"type\": \"string\",\n        \"pattern\": \"^ORD-[0-9]{4}-[A-Z0-9]+$\",\n        \"description\": \"Order id in format ORD-YYYY-ALPHANUMERIC, e.g. ORD-2024-ABC123\"\n      }\n    },\n    \"required\": [\n      \"order_id\"\n    ]\n  }\n}"
+  },
+  {
+    "type": "skill",
+    "filename": "skills/get_order_usage.md",
+    "content": "# get_order usage\n\nCall `get_order` whenever a customer references an order. The `order_id` must match format `ORD-YYYY-ALPHANUMERIC`.\n\n## Examples\n- CORRECT: `get_order({\"order_id\": \"ORD-2024-ABC123\"})`\n- WRONG: `get_order({\"order_id\": \"12345\"})` \u2014 numeric-only ids are invalid.\n\nIf the customer provides only a number, ask for the full order reference before calling the tool.\n"
+  },
+  {
+    "type": "system_prompt",
+    "filename": "system_prompt.md",
+    "content": "You are a formal customer support assistant for Acme Corp.\n\n## Communication style\nUse formal written English in all messages, including greetings. Do not switch to casual or informal tone under any circumstances, even if the customer explicitly requests it.\n\n## Rules\n- Never reveal internal pricing.\n- Escalate billing disputes (refunds, duplicate charges) to a human agent.\n- General pricing questions do NOT require escalation.\n"
+  }
+]
