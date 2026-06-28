@@ -1,0 +1,18 @@
+{
+  "name": "lookup_order",
+  "description": "Retrieve subscription or order details for a customer by order ID.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "order_id": {
+        "type": "string",
+        "description": "The customer's order or subscription ID."
+      },
+      "include_payment_history": {
+        "type": "boolean",
+        "description": "Set to true to include payment history in the response."
+      }
+    },
+    "required": ["order_id"]
+  }
+}
