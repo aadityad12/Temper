@@ -208,7 +208,13 @@ async def _pi_generate_questions(sess: Session, room: Room) -> None:
         sess.questions = []
 
     sess.status = S_AWAITING
-    await room.push({"type": "questions_ready", "count": len(sess.questions)})
+    await room.push({
+        "type": "questions_ready",
+        "questions": [
+            {"question_id": q.question_id, "dimension": q.dimension, "prompt": q.prompt}
+            for q in sess.questions
+        ],
+    })
 
 
 async def _process_single_question(sess: Session, room: Room, question: Question) -> None:
@@ -410,8 +416,7 @@ async def register(body: RegisterBody):
     if body.room_id and body.token:
         room = _require_room(body.room_id, body.token)
         if room.session_id:
-            # Re-registration: return existing session
-            return {"session_id": room.session_id}
+            raise HTTPException(status_code=409, detail="Room already registered")
 
         sess = create_session(bundle={}, pi_mode=True)
         room.session_id = sess.session_id

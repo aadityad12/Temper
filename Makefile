@@ -1,12 +1,10 @@
-PYTHON ?= python3
-
 .PHONY: run-cloud run-cloud-offline run-mock validate-schemas install-cloud install-local demo test-local test-cloud test-integration install-ui build-ui
 
 install-cloud:
-	cd cloud && $(PYTHON) -m venv .venv && .venv/bin/pip install -r requirements.txt
+	cd cloud && python -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 install-local:
-	cd local && $(PYTHON) -m venv .venv && .venv/bin/pip install -r requirements.txt
+	cd local && python -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 install-ui:
 	cd extension/ui && npm install

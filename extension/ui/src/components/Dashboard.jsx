@@ -71,8 +71,10 @@ function reducer(state, action) {
     case 'pi_connected':
       return { ...state, pi_connected: true }
 
-    case 'questions_ready':
-      return { ...state, questionCount: action.count }
+    case 'questions_ready': {
+      const rows = action.questions.map(q => ({ ...q, status: 'pending' }))
+      return { ...state, questions: rows, questionCount: rows.length }
+    }
 
     case 'pi_submitted': {
       const questions = state.questions.map(q =>
@@ -151,18 +153,27 @@ export default function Dashboard() {
   useEffect(() => {
     fetchRoomState(roomId, key)
       .then(data => {
+        const questions = (data.questions || []).map(q => ({
+          ...q,
+          status: q.judge_result ? 'judged' : q.pi_latency_ms ? 'submitted' : 'pending',
+          baseline_score: q.judge_result?.baseline_score,
+          harness_score: q.judge_result?.harness_score,
+          delta: q.judge_result ? q.judge_result.harness_score - q.judge_result.baseline_score : undefined,
+          verdict: q.judge_result?.verdict,
+        }))
+        const piTokens = questions.reduce(
+          (acc, q) => ({ input: acc.input + (q.pi_input_tokens || 0), output: acc.output + (q.pi_output_tokens || 0) }),
+          { input: 0, output: 0 }
+        )
+        const judgedCount = questions.filter(q => q.status === 'judged').length
+        const baselineTokens = { input: judgedCount * 500, output: judgedCount * 120 }
         dispatch({
           type: 'INIT',
           payload: {
             pi_connected: data.pi_connected,
-            questions: (data.questions || []).map(q => ({
-              ...q,
-              status: q.judge_result ? 'judged' : q.pi_latency_ms ? 'submitted' : 'pending',
-              baseline_score: q.judge_result?.baseline_score,
-              harness_score: q.judge_result?.harness_score,
-              delta: q.judge_result ? q.judge_result.harness_score - q.judge_result.baseline_score : undefined,
-              verdict: q.judge_result?.verdict,
-            })),
+            questions,
+            piTokens,
+            baselineTokens,
             report: data.report,
             patches: data.patches || [],
             complete: data.status === 'ready',

@@ -172,7 +172,8 @@ def run_offline_pipeline() -> tuple[dict, dict]:
         subprocess.run(["git", "checkout", "fixtures/villain_env/"], cwd=ROOT,
                        capture_output=True)
         for f in ["fixtures/villain_env/skills/get_order_usage.md",
-                  "fixtures/villain_env/tools/get_order.json"]:
+                  "fixtures/villain_env/tools/get_order.json",
+                  "fixtures/villain_env/skills/lookup_order.md"]:
             (ROOT / f).unlink(missing_ok=True)
 
 
