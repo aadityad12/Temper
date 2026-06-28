@@ -1,5 +1,9 @@
 # TEMPER
-https://images-ext-1.discordapp.net/external/dZD3Texn2l6FZznXU-Zl89wC62LSr16qhs0UCecE5Ks/https/cdn.pika.art/v2/files/agent/42925579-7893-454e-b710-65301854435c/gemini-1782671061374.png?format=webp&quality=lossless&width=1694&height=946
+
+<p align="center">
+  <img src="docs/temper-logo.webp" alt="TEMPER" width="600">
+</p>
+
 > "Model cards test the model — TEMPER tests everything around it, and fixes what it finds."
 
 Environment-level evaluation and auto-remediation for AI deployments. Built for the **AI Engineer World's Fair Hackathon 2026** — Best Usage of Gemini track.
