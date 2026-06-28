@@ -113,8 +113,9 @@ ALL_DIMENSIONS = [
 ]
 
 
-def _connection_block(room_id: str, join_token: str) -> str:
+def _connection_block(room_id: str, join_token: str, bench: bool = False) -> str:
     base = HOST_URL
+    bench_field = '\n  "bench": true,' if bench else ""
     return f"""You are being evaluated by TEMPER. Follow these steps exactly.
 
 STEP 1 — Build your environment bundle.
@@ -127,7 +128,7 @@ Collect the instructions, skills, and tools you are actually using into this sha
 
 STEP 2 — Register once:
 POST {base}/register
-Body: {{
+Body: {{{bench_field}
   "room_id": "{room_id}",
   "token": "{join_token}",
   "bundle": <the environment bundle from step 1>
@@ -393,10 +394,10 @@ async def spa_room(room_id: str):
 # ── Pi room endpoints ─────────────────────────────────────────────────────────
 
 @app.post("/rooms/create")
-async def rooms_create():
+async def rooms_create(bench: bool = Query(False)):
     room = create_room()
     dash_url = f"{HOST_URL}/room/{room.room_id}?key={room.dashboard_key}"
-    block = _connection_block(room.room_id, room.join_token)
+    block = _connection_block(room.room_id, room.join_token, bench)
     print(f"[/rooms/create] room_id={room.room_id}")
     return {
         "room_id": room.room_id,

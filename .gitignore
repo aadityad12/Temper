@@ -12,4 +12,4 @@ node_modules/
 local/last_*.json
 local/last_session_id.txt
 local/patches/
-extension/ui/dist/
+# extension/ui/dist/  # committed for DO App Platform deploy
