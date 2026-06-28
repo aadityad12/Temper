@@ -267,27 +267,34 @@ async def _process_single_question(sess: Session, room: Room, question: Question
         "output_tokens": question.pi_output_tokens,
     })
 
-    # 2. Run baseline for this question
-    try:
-        from baseline import run_single
-        b = await loop.run_in_executor(
-            None, run_single,
-            {"question_id": question.question_id, "prompt": question.prompt}
-        )
-        question.baseline_answer = b["answer"]
-        question.baseline_latency_ms = b.get("latency_ms")
-        question.baseline_input_tokens = b.get("input_tokens")
-        question.baseline_output_tokens = b.get("output_tokens")
-    except Exception as exc:
-        print(f"[pi-pipeline] baseline failed for {question.question_id}: {exc}")
+    # 2. Run baseline for this question. Bench mode uses a deterministic
+    # reference score, so it intentionally skips live baseline inference.
+    if sess.bench_mode:
         question.baseline_answer = ""
+        question.baseline_latency_ms = 0
+        question.baseline_input_tokens = 0
+        question.baseline_output_tokens = 0
+    else:
+        try:
+            from baseline import run_single
+            b = await loop.run_in_executor(
+                None, run_single,
+                {"question_id": question.question_id, "prompt": question.prompt}
+            )
+            question.baseline_answer = b["answer"]
+            question.baseline_latency_ms = b.get("latency_ms")
+            question.baseline_input_tokens = b.get("input_tokens")
+            question.baseline_output_tokens = b.get("output_tokens")
+        except Exception as exc:
+            print(f"[pi-pipeline] baseline failed for {question.question_id}: {exc}")
+            question.baseline_answer = ""
 
     # 3. Judge Pi vs baseline
     try:
         if sess.bench_mode:
             from bench import judge_bench
             result = await loop.run_in_executor(
-                None, judge_bench, question.harness_answer or "", question.baseline_answer or ""
+                None, judge_bench, question.question_id, question.harness_answer or ""
             )
         else:
             from judge import judge_single_question
@@ -327,20 +334,8 @@ async def _pi_finalize(sess: Session, room: Room) -> None:
     sess.status = S_JUDGING
 
     if sess.bench_mode:
-        q = sess.questions[0]
-        r = q.judge_result or {"baseline_score": 0, "harness_score": 0, "verdict": ""}
-        delta = r["harness_score"] - r["baseline_score"]
-        sess.report = {
-            "dimensions": {
-                "coding_bench": {
-                    "baseline_score": r["baseline_score"],
-                    "harness_score": r["harness_score"],
-                    "delta": delta,
-                    "verdict": r.get("verdict", ""),
-                    "status": "PASSING" if delta >= 0 else "NEEDS_PATCH",
-                }
-            }
-        }
+        from bench import aggregate_results
+        sess.report = aggregate_results(sess.questions)
         sess.patches = []
         sess.status = S_READY
         print(f"[pi-pipeline] {sess.session_id}: bench complete")

@@ -94,6 +94,7 @@ make test-cloud          # full @eval → @patch with live Gemini + DeepSeek
 | `make test-local` | Full @eval → @patch against mock server (no API keys) |
 | `make test-cloud` | Full @eval → @patch against live cloud server |
 | `make test-integration` | Integration test asserting villain-env bands (offline, deterministic) |
+| `make test-slopcode` | Smoke test for the six-checkpoint SlopLedger demo bench |
 | `make demo` | Render pre-cached eval + diff reports (no server needed) |
 | `make validate-schemas` | Validate fixtures against JSON schemas |
 
