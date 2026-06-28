@@ -34,8 +34,8 @@ TEMPER is an environment-level evaluation and auto-remediation system for AI dep
 | **Test-taker — local path** | DeepSeek API, called through the user's local harness by `local/harness.py` |
 | **Test-taker — Pi path** | The Pi coding agent itself, answering with its own capabilities |
 | **Baseline** | DeepSeek API, called bare with no harness by the cloud server |
-| **Judge + question generator** | Gemini 2.5 Flash |
-| **Patch generator** | Gemini 2.5 Flash |
+| **Judge + question generator** | Gemini 3.5 Flash |
+| **Patch generator** | Gemini 3.5 Flash |
 
 **Why this model split:**
 - Using the same model (DeepSeek) for both the baseline and harness run eliminates model capability as a variable. The only difference between the two runs is the harness. The delta is clean.
@@ -241,5 +241,5 @@ The honest failure case is a feature. A system that knows what it cannot fix is 
 
 | Sponsor | Integration |
 |---|---|
-| **Google / Gemini 2.5 Flash** | Judges all eval runs, generates test cases, identifies root causes, generates patch artifacts — architectural, not decorative |
+| **Google / Gemini 3.5 Flash** | Judges all eval runs, generates test cases, identifies root causes, generates patch artifacts — architectural, not decorative |
 | **DigitalOcean** | Hosts the TEMPER cloud server (FastAPI + uvicorn) |

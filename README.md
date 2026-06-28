@@ -65,8 +65,8 @@ Pi: eval loop again          ←   GET /next-question (patched dims)
 | Test-taker — local path | DeepSeek, called through the harness by `local/harness.py` |
 | Test-taker — Pi path | The Pi agent itself, answering with its own capabilities |
 | Baseline | DeepSeek, called bare by the cloud server (no harness) |
-| Judge + question generator | Gemini 2.5 Flash |
-| Patch generator | Gemini 2.5 Flash |
+| Judge + question generator | Gemini 3.5 Flash |
+| Patch generator | Gemini 3.5 Flash |
 
 ---
 
@@ -250,7 +250,7 @@ Pi gains four tools (`temper_register`, `temper_next_question`, `temper_submit_a
 
 | Sponsor | Role |
 |---|---|
-| **Google / Gemini 2.5 Flash** | Generates test questions, judges answer pairs, produces patch artifacts — load-bearing, not decorative |
+| **Google / Gemini 3.5 Flash** | Generates test questions, judges answer pairs, produces patch artifacts — load-bearing, not decorative |
 | **DigitalOcean** | Hosts the cloud server (FastAPI + uvicorn) at `https://temper-2dwph.ondigitalocean.app` |
 
 ---
@@ -265,7 +265,7 @@ Pi gains four tools (`temper_register`, `temper_next_question`, `temper_submit_a
 | `TEMPER_OFFLINE` | — | `false` | `true` → local client routes to mock server (port 8000) |
 | `CLOUD_OFFLINE` | — | `false` | `true` → cloud server uses scripted responses (no API keys) |
 | `DEEPSEEK_MODEL` | — | `deepseek-chat` | DeepSeek model ID |
-| `GEMINI_MODEL` | — | `gemini-2.5-flash` | Gemini model ID |
+| `GEMINI_MODEL` | — | `gemini-3.5-flash` | Gemini model ID |
 | `CLOUD_PORT` | — | `8001` | Cloud server port |
 | `TEMPER_HOST_URL` | — | `http://localhost:{PORT}` | Public URL used in Pi connection blocks |
 
