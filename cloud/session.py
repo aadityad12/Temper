@@ -48,6 +48,7 @@ class Session:
     bundle: dict
     status: str = S_REGISTERED
     pi_mode: bool = False                 # True when session is from a Pi room
+    bench_mode: bool = False              # True when running the coding benchmark
 
     questions: list[Question] = field(default_factory=list)
     q_cursor: int = 0                      # next question index to serve

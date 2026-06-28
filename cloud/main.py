@@ -56,6 +56,8 @@ class RegisterBody(BaseModel):
     # Pi path: room_id + one-time join token
     room_id: str | None = None
     token: str | None = None
+    # Set to true to run the coding benchmark instead of dimension-based eval
+    bench: bool = False
 
 
 class SubmitBody(BaseModel):
@@ -225,14 +227,20 @@ async def _run_pipeline(sess: Session) -> None:
 async def _pi_generate_questions(sess: Session, room: Room) -> None:
     """Generate questions for a Pi session, then mark awaiting."""
     loop = asyncio.get_event_loop()
-    try:
-        from generator import generate_questions
-        raw_qs = await loop.run_in_executor(None, generate_questions, sess.bundle, ALL_DIMENSIONS)
-        sess.questions = [Question(**q) for q in raw_qs]
-        print(f"[pi-pipeline] {sess.session_id}: generated {len(sess.questions)} questions")
-    except Exception as exc:
-        print(f"[pi-pipeline] question generation failed: {exc}")
-        sess.questions = []
+
+    if sess.bench_mode:
+        from bench import BENCH_QUESTIONS
+        sess.questions = [Question(**q) for q in BENCH_QUESTIONS]
+        print(f"[pi-pipeline] {sess.session_id}: bench mode — {len(sess.questions)} question(s)")
+    else:
+        try:
+            from generator import generate_questions
+            raw_qs = await loop.run_in_executor(None, generate_questions, sess.bundle, ALL_DIMENSIONS)
+            sess.questions = [Question(**q) for q in raw_qs]
+            print(f"[pi-pipeline] {sess.session_id}: generated {len(sess.questions)} questions")
+        except Exception as exc:
+            print(f"[pi-pipeline] question generation failed: {exc}")
+            sess.questions = []
 
     sess.status = S_AWAITING
     await room.push({
@@ -275,11 +283,17 @@ async def _process_single_question(sess: Session, room: Room, question: Question
 
     # 3. Judge Pi vs baseline
     try:
-        from judge import judge_single_question
-        result = await loop.run_in_executor(None, judge_single_question, question, sess.bundle)
+        if sess.bench_mode:
+            from bench import judge_bench
+            result = await loop.run_in_executor(
+                None, judge_bench, question.harness_answer or "", question.baseline_answer or ""
+            )
+        else:
+            from judge import judge_single_question
+            result = await loop.run_in_executor(None, judge_single_question, question, sess.bundle)
     except Exception as exc:
         print(f"[pi-pipeline] judge failed for {question.question_id}: {exc}")
-        result = {"baseline_score": 70, "harness_score": 70, "verdict": "Judgment unavailable."}
+        result = {"baseline_score": 0, "harness_score": 0, "verdict": "Judgment unavailable."}
 
     # Cache result so all_judged() recognises this question as done (covers fallback too)
     question.judge_result = result
@@ -454,6 +468,7 @@ async def register(body: RegisterBody):
 
         room.join_token_used = True
         sess = create_session(bundle=body.bundle, pi_mode=True)
+        sess.bench_mode = body.bench
         room.session_id = sess.session_id
         sess.status = S_GENERATING
 
