@@ -1,25 +1,25 @@
 # TEMPER API Contract
 
-This document is the authoritative interface between the local layer (Dev 1 / Claude Code) and the cloud layer (Dev 2 / Antigravity or FastAPI). **Both devs must sign off before either side writes core logic.** Do not change field names without updating both sides and bumping this doc.
+Authoritative interface between the local/Pi client layer and the TEMPER cloud server. Do not change field names without updating both sides and bumping this doc.
 
 ---
 
 ## Communication model
 
-Antigravity is the **server**. Claude Code is the **client**. All traffic is outbound HTTP from local → cloud. No WebSockets, no push, no NAT issues.
+The TEMPER cloud server is the **server**. Local scripts (`eval.py`, `patch.py`) and the Pi coding agent are **clients**. All traffic is outbound HTTP from client → server.
 
 ```
-Claude Code (local)          Antigravity (cloud)
+Client (local or Pi)         TEMPER Cloud Server
      │                              │
-     │  POST /register  ──────────► │  creates session, kicks off
-     │  ◄────────────── session_id  │  test generation + baseline
+     │  POST /register  ──────────► │  creates session, starts
+     │  ◄────────────── session_id  │  question generation + baseline
      │                              │
      │  GET /next-question ────────►│
      │  ◄──── {question} or {done} │  serves queue one at a time
      │                              │
-     │  (run through harness)       │
+     │  (client answers question)   │
      │                              │
-     │  POST /submit-answer ───────►│  stores harness answer + latency
+     │  POST /submit-answer ───────►│  stores answer + latency
      │  ◄────────── {received:true} │
      │                              │
      │  ... repeat until done ...   │
@@ -34,11 +34,24 @@ Claude Code (local)          Antigravity (cloud)
      │  ◄──── updated report        │
 ```
 
+**Pi room path** (additional endpoints for the live dashboard):
+
+```
+Dashboard browser            TEMPER Cloud Server
+     │                              │
+     │  POST /rooms/create ────────►│  issues room_id + tokens
+     │  ◄── room_id, join_token,    │
+     │       dashboard_key          │
+     │                              │
+     │  GET /rooms/{id}/stream ────►│  SSE: live question/score events
+     │  GET /rooms/{id}/state ─────►│  snapshot for page reload
+```
+
 ---
 
 ## Dimension enum
 
-All dimension keys must use exactly these strings throughout both codebases:
+All dimension keys must use exactly these strings:
 
 ```
 instruction_adherence
@@ -55,7 +68,7 @@ error_recovery
 
 ### POST /register
 
-Ingests the environment bundle. Returns a session id immediately (async generation + baseline starts in the background). Dev 1 → Dev 2.
+Ingests the environment bundle. Returns a session id immediately (question generation + baseline run start in background).
 
 **Request**
 ```json
@@ -68,7 +81,10 @@ Ingests the environment bundle. Returns a session id immediately (async generati
     "tools": [
       { "name": "string", "definition": {} }
     ]
-  }
+  },
+  "room_id": "string (optional — Pi room path only)",
+  "token":   "string (optional — one-time join token for Pi room)",
+  "bench":   "boolean (optional — run coding benchmark instead of dimension eval)"
 }
 ```
 
@@ -82,13 +98,13 @@ Ingests the environment bundle. Returns a session id immediately (async generati
 { "error": "string" }
 ```
 
-**Side effect:** server begins Gemini test-question generation and bare-DeepSeek baseline run in the background. `/next-question` will block (return `{"status":"not_ready"}`) until generation completes.
+**Side effect:** server begins Gemini question generation and bare-DeepSeek baseline run in background. `/next-question` returns `{"status":"not_ready"}` until generation completes.
 
 ---
 
 ### GET /next-question
 
-Pops the next unanswered question for a session. Dev 1 polls this in a loop.
+Returns the next unanswered question for a session.
 
 **Request**
 ```
@@ -115,42 +131,44 @@ GET /next-question?session_id=<string>
 { "status": "not_ready" }
 ```
 
-Client behavior: on `not_ready`, back off and retry (start at 2s, cap at 10s).
+On `not_ready`: back off and retry (start at 2s, cap at 10s, exponential).
 
 ---
 
 ### POST /submit-answer
 
-Submits the local harness answer + measured latency for a question. Dev 1 → Dev 2.
+Submits the client's answer and measured latency for a question.
 
 **Request**
 ```json
 {
-  "session_id": "string",
-  "question_id": "string",
-  "answer": "string",
-  "latency_ms": 1234
+  "session_id":    "string",
+  "question_id":   "string",
+  "answer":        "string",
+  "latency_ms":    1234,
+  "input_tokens":  42,
+  "output_tokens": 87
 }
 ```
 
-`answer` must include any tool calls the model made, serialized as a string (e.g. JSON blob for tool calls).
+`input_tokens` and `output_tokens` are optional. When provided they appear in the dashboard token usage panel.
 
-`latency_ms` measures inference time only (wall-clock around the DeepSeek call, excluding local assembly).
+`latency_ms` measures inference time only (exclude prompt assembly). Must be included on every submission — the server uses it to compute the `latency_delta` dimension score.
 
 **Response 200**
 ```json
 { "received": true }
 ```
 
-**Idempotency:** re-submitting the same `question_id` updates rather than duplicates.
+Re-submitting the same `question_id` updates rather than duplicates (idempotent).
 
-**Side effect:** when the last answer arrives the server advances status to `judging` (triggers Gemini evaluation).
+**Side effect:** when the last answer arrives, the server advances to `judging` (triggers Gemini evaluation). In Pi room mode it also pushes a per-question SSE event to the dashboard.
 
 ---
 
 ### GET /results
 
-Returns the full evaluation report once judging is complete. Dev 1 polls this after the loop ends.
+Returns the full evaluation report once judging is complete. Works for both initial and re-eval session ids.
 
 **Request**
 ```
@@ -170,42 +188,40 @@ GET /results?session_id=<string>
     "dimensions": {
       "<dimension enum>": {
         "baseline_score": 72,
-        "harness_score": 31,
-        "delta": -41,
-        "root_cause": "string | null",
-        "fixable": true
+        "harness_score":  31,
+        "delta":          -41,
+        "root_cause":     "string | null",
+        "fixable":        true
       }
     }
   },
   "patches": [
     {
-      "type": "skill | system_prompt | tool_definition",
+      "type":     "skill | system_prompt | tool_definition",
       "filename": "string",
-      "content": "string"
+      "content":  "string"
     }
   ]
 }
 ```
 
-Client behavior on `processing`: back off and retry (start at 3s, cap at 15s).
-
-This endpoint works for both initial session ids and re-eval session ids.
+On `processing`: back off and retry (start at 3s, cap at 15s, exponential).
 
 ---
 
 ### POST /reeval
 
-Triggers re-evaluation of specific dimensions after patches have been applied. Dev 1 → Dev 2.
+Triggers re-evaluation of specific dimensions after patches have been applied.
 
 **Request**
 ```json
 {
-  "session_id": "string",
-  "dimensions": ["instruction_adherence", "tool_accuracy"],
-  "updated_bundle": {
+  "session_id":      "string",
+  "dimensions":      ["instruction_adherence", "tool_accuracy"],
+  "updated_bundle":  {
     "system_prompt": "string | null",
-    "skills": [ { "name": "string", "content": "string" } ],
-    "tools":  [ { "name": "string", "definition": {} } ]
+    "skills":        [ { "name": "string", "content": "string" } ],
+    "tools":         [ { "name": "string", "definition": {} } ]
   }
 }
 ```
@@ -215,15 +231,56 @@ Triggers re-evaluation of specific dimensions after patches have been applied. D
 { "reeval_session_id": "string" }
 ```
 
-After receiving `reeval_session_id`, Dev 1 runs the test loop again (same `/next-question` → `/submit-answer` flow) under this new session id — answering only the re-served (patched-dimension) questions — then polls `GET /results?session_id=<reeval_session_id>`.
+After receiving `reeval_session_id`, run the same `/next-question` → `/submit-answer` loop under this new session id. The server serves only questions for the specified dimensions. Poll `GET /results?session_id=<reeval_session_id>` for the diff report.
+
+---
+
+### POST /rooms/create
+
+Creates a Pi evaluation room. Returns a one-time join token for Pi and a reusable dashboard key for the browser.
+
+**Request** — no body required
+
+**Response 200**
+```json
+{
+  "room_id":        "string",
+  "join_token":     "string",
+  "dashboard_key":  "string",
+  "dashboard_url":  "string",
+  "connection_block": "string (formatted instructions for Pi to paste)"
+}
+```
+
+---
+
+### GET /rooms/{room_id}/stream
+
+SSE stream for the dashboard. Authorized by `dashboard_key` query parameter.
+
+```
+GET /rooms/{room_id}/stream?key=<dashboard_key>
+```
+
+Event types pushed: `question_added`, `answer_submitted`, `question_judged`, `session_complete`.
+
+---
+
+### GET /rooms/{room_id}/state
+
+Snapshot of current room state for page reload. Authorized by `dashboard_key` query parameter.
+
+```
+GET /rooms/{room_id}/state?key=<dashboard_key>
+```
+
+Returns the current session status, all questions with their scores, and the final report if complete.
 
 ---
 
 ## Latency Delta
 
-`latency_delta` is **not** an LLM-judged dimension. It has no generated questions. The server computes it from `latency_ms` values submitted with answers to the other dimensions' questions, compared against `latency_baseline_ms` collected during the baseline run.
-
-The client must submit `latency_ms` on every answer (not just latency_delta questions) so the server has a representative timing sample.
+`latency_delta` is **not** an LLM-judged dimension — it has no generated questions. The server computes it from `latency_ms` values submitted with answers across all other dimensions, compared against baseline timing. Submit `latency_ms` on every answer.
 
 ---
 
@@ -235,13 +292,3 @@ The client must submit `latency_ms` on every answer (not just latency_delta ques
 | GET /results | `processing` | 3s | 15s |
 
 Use exponential backoff within these bounds. Log retries so the user sees progress.
-
----
-
-## Dev 1 sign-off
-
-- [ ] Reviewed and agreed (comment on issue #37)
-
-## Dev 2 sign-off
-
-- [ ] Reviewed and agreed (comment on issue #37)

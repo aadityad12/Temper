@@ -1,36 +1,30 @@
-# EVAL_GUIDE — TEMPER Orchestration Spec
+# EVAL_GUIDE — TEMPER Orchestration Reference
 
-This file is read by Claude Code at the start of every TEMPER session. It defines the two
-user-facing commands (`@eval` and `@patch`) and the full control flow each one drives.
+Defines the `@eval` / `@patch` control flow for the **local Python path** (`local/eval.py`, `local/patch.py`). For the Pi harness path, see `extension/temper.ts` and `extension/skills/temper_protocol.md`.
 
 ---
 
 ## Overview
 
-TEMPER evaluates the **harness** wrapped around a model — the system prompt, skills, and tool
-definitions — not the model itself. The test-taker is **DeepSeek** (via API). Claude Code is the
-orchestration client; it never answers questions itself.
+TEMPER evaluates the **harness** wrapped around a model — the system prompt, skills, and tool definitions — not the model itself.
 
-The cloud server (Antigravity) generates test questions with Gemini, runs a bare-DeepSeek baseline,
-and judges answers. The local layer (this repo) collects the bundle, drives the test loop, writes
-patch artifacts, and renders the report.
+**Local path:** DeepSeek is the test-taker. `eval.py` collects the environment bundle, drives the test loop by calling DeepSeek with the full harness, and submits answers. The cloud server generates questions with Gemini, runs a bare-DeepSeek baseline, judges answer pairs, and produces patch artifacts.
 
-**Offline mode:** set `TEMPER_OFFLINE=true` in `.env` and run `make run-mock` to use the mock
-server at `http://localhost:8000`. All five endpoints are scripted end-to-end.
+**Pi path:** The Pi agent itself is the test-taker. The Pi extension (`extension/temper.ts`) provides tools and commands that follow the same protocol.
+
+**Offline mode:** set `CLOUD_OFFLINE=true` and run `make run-cloud-offline` to use the cloud server with scripted responses (no API keys). The mock server at port 8000 (`make run-mock`) is for the local `test-local` flow only.
 
 ---
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `DEEPSEEK_API_KEY` | yes (live) | Key for DeepSeek inference calls |
-| `ANTIGRAVITY_BASE_URL` | yes (live) | Base URL of the cloud server |
-| `DEEPSEEK_MODEL` | no | Default: `deepseek-chat` |
-| `GEMINI_API_KEY` | cloud only | Used by Dev 2, not Dev 1 |
-| `TEMPER_OFFLINE` | no | Set `true` to route to mock server at localhost:8001 |
-
-Copy `.env.example` to `.env` and fill in values before running any command.
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DEEPSEEK_API_KEY` | yes (live) | — | Key for DeepSeek inference calls |
+| `ANTIGRAVITY_BASE_URL` | yes (live) | `http://localhost:8001` | Base URL of the cloud server |
+| `DEEPSEEK_MODEL` | no | `deepseek-chat` | DeepSeek model ID |
+| `GEMINI_API_KEY` | cloud server only | — | Gemini API key |
+| `TEMPER_OFFLINE` | no | `false` | `true` → local client routes to mock server (port 8000) |
 
 ---
 
@@ -38,14 +32,13 @@ Copy `.env.example` to `.env` and fill in values before running any command.
 
 ### What it does
 
-Collects the current environment bundle, registers it with the server, drives the full
-question–answer test loop using DeepSeek, and polls for the final report. Renders the report
-to the terminal on completion.
+Collects the current environment bundle, registers it with the server, drives the full question–answer test loop using DeepSeek, and polls for the final report. Renders the report to the terminal on completion.
 
 ### Invocation
 
-```
-@eval [path/to/env/dir]
+```bash
+cd local
+python eval.py [path/to/env/dir]
 ```
 
 If no path is given, defaults to `fixtures/villain_env/`.
@@ -92,8 +85,7 @@ If no path is given, defaults to `fixtures/villain_env/`.
 
 ### Notes
 
-- `latency_delta` is computed server-side from the `latency_ms` values submitted on every answer.
-  Always include `latency_ms`; never skip it.
+- `latency_delta` is computed server-side from the `latency_ms` values submitted on every answer. Always include `latency_ms`; never skip it.
 - Re-submitting the same `question_id` updates rather than duplicates (idempotent).
 - On any HTTP error: print the status code + body, retry up to 3 times with 2s delay, then abort.
 
@@ -103,14 +95,13 @@ If no path is given, defaults to `fixtures/villain_env/`.
 
 ### What it does
 
-Applies the server-generated patches to the environment, calls `/reeval` for the patched
-dimensions, runs the test loop again under the new session id, and renders a diff report
-showing pre/post scores.
+Applies the server-generated patches to the environment, calls `/reeval` for the patched dimensions, runs the test loop again under the new session id, and renders a diff report showing pre/post scores.
 
 ### Invocation
 
-```
-@patch [path/to/env/dir]
+```bash
+cd local
+python patch.py [path/to/env/dir]
 ```
 
 If no path is given, defaults to `fixtures/villain_env/`.
@@ -160,25 +151,24 @@ Requires a prior `@eval` run (reads `local/last_session_id.txt` and `local/patch
 
 ## Report Rendering
 
-Both `@eval` (full report) and `@patch` (diff report) use the same renderer
-(`local/renderer.py`). The renderer reads a report JSON and prints to stdout.
+Both `@eval` (full report) and `@patch` (diff report) use `local/renderer.py`.
 
 ### Full report format (after @eval)
 
 ```
-╔══════════════════════════════════════╗
-║  TEMPER — Eval Report                ║
-║  Session: <session_id>               ║
-╚══════════════════════════════════════╝
+╭────────────────────────╮
+│ TEMPER — Eval Report   │
+│ Session: <session_id>  │
+╰────────────────────────╯
 
-Dimension           Baseline  Harness   Δ      Status
-──────────────────────────────────────────────────────────
-instruction_adherence   71       44    −27    NEEDS_PATCH
-tool_accuracy           72       31    −41    NEEDS_PATCH
-output_format           88       85     −3    PASSING
-skill_trigger           60       52     −8    NEEDS_PATCH
-latency_delta           90       74    −16    NEEDS_PATCH
-error_recovery          38       35     −3    STRUCTURAL_LIMITATION
+ Dimension                 Baseline   Harness     Δ   Status
+ ────────────────────────────────────────────────────────────
+ instruction_adherence           71        44   -27   NEEDS_PATCH
+ tool_accuracy                   72        31   -41   NEEDS_PATCH
+ output_format                   88        85    -3   PASSING
+ skill_trigger                   60        52    -8   NEEDS_PATCH
+ latency_delta                   90        74   -16   NEEDS_PATCH
+ error_recovery                  38        35    -3   STRUCTURAL_LIMITATION
 
 Root causes:
   instruction_adherence: <root_cause string>
@@ -192,16 +182,16 @@ Run @patch to apply fixes and re-evaluate.
 ### Diff report format (after @patch)
 
 ```
-╔══════════════════════════════════════╗
-║  TEMPER — Re-eval Report             ║
-║  Session: <reeval_session_id>        ║
-╚══════════════════════════════════════╝
+╭──────────────────────────╮
+│ TEMPER — Re-eval Report  │
+│ Session: <reeval_id>     │
+╰──────────────────────────╯
 
-Dimension           Before  After   Move    Status
-──────────────────────────────────────────────────
-tool_accuracy          31     79    +48    RESOLVED
-instruction_adherence  44     82    +38    RESOLVED
-error_recovery         35     37     +2    STRUCTURAL_LIMITATION
+ Dimension                 Before   After   Move   Status
+ ─────────────────────────────────────────────────────────
+ tool_accuracy                 31      79    +48   RESOLVED
+ instruction_adherence         44      82    +38   RESOLVED
+ error_recovery                35      37     +2   STRUCTURAL_LIMITATION
 
 Unchanged dimensions (not re-evaluated):
   output_format: 85  (PASSING)
@@ -209,8 +199,7 @@ Unchanged dimensions (not re-evaluated):
   latency_delta: 74  (NEEDS_PATCH)
 ```
 
-Use `rich` for color: green for RESOLVED/PASSING, red for NEEDS_PATCH, yellow for
-STRUCTURAL_LIMITATION. Deltas: green if positive, red if negative, grey if within ±5.
+Colors: green for RESOLVED/PASSING, red for NEEDS_PATCH, yellow for STRUCTURAL_LIMITATION. Deltas: green if positive, red if negative, grey if within ±5.
 
 ---
 
@@ -218,26 +207,28 @@ STRUCTURAL_LIMITATION. Deltas: green if positive, red if negative, grey if withi
 
 ```
 local/
-  eval.py          ← @eval entry point (bundle collect + test loop + results poll)
-  patch.py         ← @patch entry point (apply patches + reeval loop)
-  bundle.py        ← bundle collector (reads env dir, validates schema)
-  harness.py       ← DeepSeek inference call (measures latency_ms)
-  renderer.py      ← report + diff renderer (rich output)
-  client.py        ← HTTP client wrapping all 5 endpoints (retry logic here)
-  mock_server.py   ← offline mock (already complete)
-  requirements.txt ← already installed in .venv
-last_report.json       ← written by @eval
-last_reeval_report.json← written by @patch
-last_session_id.txt    ← written by @eval
-patches/               ← written by @eval, read by @patch
-  *.md / *.json
+  eval.py               @eval entry point (bundle collect + test loop + results poll)
+  patch.py              @patch entry point (apply patches + reeval loop)
+  bundle.py             bundle collector (reads env dir, validates schema)
+  harness.py            DeepSeek inference call (measures latency_ms)
+  renderer.py           report + diff renderer (rich output)
+  client.py             HTTP client wrapping all endpoints (retry/backoff here)
+  mock_server.py        offline mock (scripted 12-question flow)
+  requirements.txt
+
+  last_report.json           written by eval.py
+  last_reeval_report.json    written by patch.py
+  last_session_id.txt        written by eval.py
+  patches/                   written by eval.py, read by patch.py
+    *.md / *.json
+  demo_cache/                pre-serialised reports for `make demo`
 ```
 
 ---
 
 ## API Quick Reference
 
-All five endpoints are documented in `contract/api.md`. Key facts:
+Full endpoint documentation in `contract/api.md`.
 
 | Endpoint | Method | Transient status | Retry start | Retry cap |
 |---|---|---|---|---|
@@ -247,9 +238,7 @@ All five endpoints are documented in `contract/api.md`. Key facts:
 | /results | GET | `processing` | 3s | 15s |
 | /reeval | POST | — | — | — |
 
-The mock server (port 8000) serves 12 questions then `done`, returns `processing` × 2 then
-the sample report + 3 patches. Re-eval serves 4 questions and shows tool_accuracy and
-instruction_adherence RESOLVED.
+The mock server (port 8000) serves 12 questions then `done`, returns `processing` × 2 then the sample report + 3 patches. Re-eval serves 4 questions and shows `tool_accuracy` and `instruction_adherence` RESOLVED.
 
 ---
 
@@ -264,56 +253,25 @@ latency_delta           Does the harness add token overhead that slows inference
 error_recovery          Does the harness help the model recover from tool errors?
 ```
 
-`latency_delta` has no generated questions — computed from `latency_ms` on every submission.
+`latency_delta` has no generated questions — computed server-side from `latency_ms` on every submission.
 
 ---
 
-## Demo Flow (happy path)
+## Demo Flow
 
 ```bash
-# Terminal 1: start the mock server
-make run-mock
+# Terminal 1: start the cloud server
+make run-cloud
 
 # Terminal 2: run the eval
-@eval fixtures/villain_env/
+cd local && python eval.py fixtures/villain_env/
 
-# Review the report — tool_accuracy and instruction_adherence will show large negative deltas
+# Review the report — tool_accuracy and instruction_adherence show large negative deltas
 # Patches are written to local/patches/
 
 # Apply patches and re-evaluate
-@patch fixtures/villain_env/
+python patch.py fixtures/villain_env/
 
 # Diff report shows tool_accuracy 31→79 (RESOLVED), instruction_adherence 44→82 (RESOLVED)
 # error_recovery stays flat — STRUCTURAL_LIMITATION (expected, honest failure)
 ```
-
----
-
-## Implementation Notes for E1.x
-
-- **E1.2 (bundle.py):** Read env dir recursively. `skills/` → array of `{name, content}`.
-  `tools/` → array of `{name, definition}` (definition is the parsed JSON object).
-  `system_prompt.md` → string (null if absent). Validate result with jsonschema.
-
-- **E1.3 (harness.py):** Build messages: `[{role: "system", content: bundle_as_context},
-  {role: "user", content: question_prompt}]`. The bundle context is a formatted string
-  combining system prompt, skill contents, and tool definitions. Time the API call only.
-  Return `{answer: str, latency_ms: int}`.
-
-- **E1.4 (eval.py test loop):** Implement the poll-answer-submit loop exactly as specified
-  above. Use exponential backoff from `client.py`. Log every retry and every answered question
-  so the user sees live progress.
-
-- **E1.5 (renderer.py):** `render_full(report, session_id, n_patches)` and
-  `render_diff(orig_report, reeval_report, reeval_session_id)`. Import `rich.table` and
-  `rich.console`. Keep it importable without a live server.
-
-- **E1.6 (patch.py):** Determine patched dims by reading `report["dimensions"]` for entries
-  with `fixable == true`. Write patch files into the env dir and call `/reeval`.
-
-- **E1.7 (re-eval loop):** Reuse the test loop from eval.py with the `reeval_session_id`.
-  Factor the loop into a shared function in `eval.py` or a separate `loop.py`.
-
-- **E1.8 (pre-cache):** Serialize the sample report and sample reeval (mock server responses)
-  to `local/demo_cache/`. The renderer must accept these as input so the demo never depends
-  on a live server.
