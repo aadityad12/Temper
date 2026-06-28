@@ -16,7 +16,9 @@ demo:
 	cd local && .venv/bin/python demo.py
 
 test-local:
+	git checkout fixtures/villain_env/ && rm -f fixtures/villain_env/skills/get_order_usage.md fixtures/villain_env/tools/get_order.json
 	cd local && TEMPER_OFFLINE=true .venv/bin/python eval.py && TEMPER_OFFLINE=true .venv/bin/python patch.py
+	git checkout fixtures/villain_env/ && rm -f fixtures/villain_env/skills/get_order_usage.md fixtures/villain_env/tools/get_order.json
 
 validate-schemas:
 	cd local && .venv/bin/python -c "\
