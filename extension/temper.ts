@@ -19,7 +19,7 @@
  *   patched_env/           — patch files written by /patch command
  *
  * Register in ~/.pi/agent/settings.json:
- *   { "extensions": ["/Users/aadityad/Desktop/Aaditya/Personal/ExtraCuricular/Temper/extension/temper.ts"] }
+ *   { "extensions": ["/path/to/Temper/extension/temper.ts"] }
  */
 
 import * as fs from "node:fs";
@@ -193,10 +193,15 @@ export default function temperExtension(pi: ExtensionAPI): void {
             ctx.ui.notify(`Fetching results for session ${state.session_id}…`, "info");
             let results: any;
             try {
-                const { data } = await httpRequest(
+                const { status, data } = await httpRequest(
                     "GET",
                     `${state.base_url}/results?session_id=${encodeURIComponent(state.session_id)}`,
                 );
+                if (status >= 400) {
+                    const detail = (data && ((data as any).detail || (data as any).error)) ?? JSON.stringify(data);
+                    ctx.ui.notify(`Failed to fetch results (HTTP ${status}): ${detail}`, "error");
+                    return;
+                }
                 results = data;
             } catch (err) {
                 ctx.ui.notify(`Failed to fetch results: ${String(err)}`, "error");
