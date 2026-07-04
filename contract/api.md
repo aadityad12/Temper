@@ -93,9 +93,9 @@ Ingests the environment bundle. Returns a session id immediately (question gener
 { "session_id": "string" }
 ```
 
-**Response 422** — schema-invalid bundle
+**Response 422** — bundle is not an object, or has none of `system_prompt`/`skills`/`tools`
 ```json
-{ "error": "string" }
+{ "detail": "string" }
 ```
 
 **Side effect:** server begins Gemini question generation and bare-DeepSeek baseline run in background. `/next-question` returns `{"status":"not_ready"}` until generation completes.
