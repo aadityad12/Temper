@@ -5,7 +5,7 @@ Usage:
     python patch.py [env_dir]          # env_dir defaults to fixtures/villain_env
 
 Requires a prior @eval run (reads local/last_session_id.txt + local/last_report.json
-+ local/patches/).
++ local/last_patches.json).
 """
 
 import json
@@ -26,13 +26,6 @@ import renderer
 from eval import run_test_loop
 
 LOCAL_DIR = Path(__file__).parent
-PATCHES_DIR = LOCAL_DIR / "patches"
-
-_PATCH_TYPE_MAP = {
-    "system_prompt": "system_prompt.md",
-    "skill": None,          # filename comes from the patch itself
-    "tool_definition": None,
-}
 
 
 def _patch_dest(patch: dict, env_dir: pathlib.Path) -> pathlib.Path:
@@ -62,21 +55,6 @@ def _load_prior_state() -> tuple[str, dict]:
     session_id = sid_path.read_text().strip()
     saved = json.loads(report_path.read_text())
     return session_id, saved["report"]
-
-
-def _load_patches() -> list[dict]:
-    """Load all patch files from local/patches/. Raises if none found."""
-    if not PATCHES_DIR.exists():
-        raise FileNotFoundError("local/patches/ not found. Run @eval first.")
-
-    patches = []
-    for f in sorted(PATCHES_DIR.iterdir()):
-        content = f.read_text()
-        name = f.name
-        # Reconstruct the patch dict from the saved file
-        # Filename format saved by eval.py: "type_filename" flattened with _
-        # We stored the raw patch list in last_report.json — check there first.
-    return None  # signal to read from report json
 
 
 def _load_patches_from_report() -> list[dict]:

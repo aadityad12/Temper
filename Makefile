@@ -1,10 +1,10 @@
 .PHONY: run-cloud run-cloud-offline run-mock validate-schemas install-cloud install-local demo test-local test-cloud test-integration install-ui build-ui
 
 install-cloud:
-	cd cloud && python -m venv .venv && .venv/bin/pip install -r requirements.txt
+	cd cloud && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 install-local:
-	cd local && python -m venv .venv && .venv/bin/pip install -r requirements.txt
+	cd local && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 install-ui:
 	cd extension/ui && npm install
@@ -22,9 +22,9 @@ test-integration:
 	cd local && CLOUD_OFFLINE=true .venv/bin/python test_integration.py
 
 test-cloud:
-	git checkout fixtures/villain_env/ && rm -f fixtures/villain_env/skills/get_order_usage.md fixtures/villain_env/tools/get_order.json
+	git checkout fixtures/villain_env/
 	cd local && TEMPER_OFFLINE=false ANTIGRAVITY_BASE_URL=http://localhost:8001 .venv/bin/python eval.py && TEMPER_OFFLINE=false ANTIGRAVITY_BASE_URL=http://localhost:8001 .venv/bin/python patch.py
-	git checkout fixtures/villain_env/ && rm -f fixtures/villain_env/skills/get_order_usage.md fixtures/villain_env/tools/get_order.json
+	git checkout fixtures/villain_env/
 
 run-mock:
 	cd local && .venv/bin/python mock_server.py
@@ -33,9 +33,9 @@ demo:
 	cd local && .venv/bin/python demo.py
 
 test-local:
-	git checkout fixtures/villain_env/ && rm -f fixtures/villain_env/skills/get_order_usage.md fixtures/villain_env/tools/get_order.json
+	git checkout fixtures/villain_env/
 	cd local && TEMPER_OFFLINE=true .venv/bin/python eval.py && TEMPER_OFFLINE=true .venv/bin/python patch.py
-	git checkout fixtures/villain_env/ && rm -f fixtures/villain_env/skills/get_order_usage.md fixtures/villain_env/tools/get_order.json
+	git checkout fixtures/villain_env/
 
 validate-schemas:
 	cd local && .venv/bin/python -c "\
