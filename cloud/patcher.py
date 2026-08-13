@@ -116,6 +116,7 @@ def generate_patches(dimensions_result: dict, bundle: dict) -> list[dict]:
 
     bundle_content = _format_bundle(bundle)
     patches = []
+    attempted = False
 
     for dim, result in dimensions_result.items():
         if result.get("status") not in ("NEEDS_PATCH",):
@@ -125,6 +126,7 @@ def generate_patches(dimensions_result: dict, bundle: dict) -> list[dict]:
         if not fix_type:
             continue
 
+        attempted = True
         prompt = _PATCH_PROMPT.format(
             dimension=dim,
             root_cause=root_cause,
@@ -146,7 +148,12 @@ def generate_patches(dimensions_result: dict, bundle: dict) -> list[dict]:
         except Exception as exc:
             print(f"[patcher] Gemini failed for {dim}: {exc} — skipping patch")
 
-    return patches or _OFFLINE_PATCHES
+    if patches:
+        return patches
+    if not attempted:
+        return []
+    print("[patcher] WARNING: all Gemini patch generations failed — falling back to canned demo patches")
+    return [dict(p, is_fallback=True) for p in _OFFLINE_PATCHES]
 
 
 def _format_bundle(bundle: dict) -> str:

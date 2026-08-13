@@ -135,7 +135,7 @@ def judge_dimension(dimension: str, questions: list[Question], bundle: dict,
         raise RuntimeError("GEMINI_API_KEY not set and CLOUD_OFFLINE is not true")
 
     if dimension == "latency_delta":
-        return _compute_latency_delta(questions)
+        return _compute_latency_delta(questions, is_reeval)
 
     from google import genai
     from google.genai import types
@@ -190,15 +190,26 @@ def judge_dimension(dimension: str, questions: list[Question], bundle: dict,
                          len(baseline_scores), is_reeval=is_reeval)
 
 
-def _compute_latency_delta(questions: list[Question]) -> dict:
+def _compute_latency_delta(questions: list[Question], is_reeval: bool = False) -> dict:
     """Latency delta — computed from timing data, no LLM call."""
-    harness_latencies = [q.harness_latency_ms for q in questions
+    latency_qs = [q for q in questions if q.dimension == "latency_delta"]
+    harness_latencies = [q.harness_latency_ms for q in latency_qs
                          if q.harness_latency_ms is not None]
-    baseline_latencies = [q.baseline_answer for q in questions
-                          if q.baseline_answer is not None]
-    # baseline latency is stored during baseline run as a separate field
-    # For now fall back to offline numbers
-    return _offline_result("latency_delta")
+    baseline_latencies = [q.baseline_latency_ms for q in latency_qs
+                          if q.baseline_latency_ms is not None]
+
+    if not harness_latencies or not baseline_latencies:
+        return _offline_result("latency_delta", is_reeval)
+
+    baseline_ms = statistics.mean(baseline_latencies)
+    harness_ms = statistics.mean(harness_latencies)
+    baseline_score = min(100, max(0, 100 - int(baseline_ms / 20)))
+    harness_score = min(100, max(0, 100 - int(harness_ms / 20)))
+    delta = harness_score - baseline_score
+
+    return _build_result("latency_delta", baseline_score, harness_score, delta,
+                         root_cause=None, test_cases_run=len(latency_qs), is_reeval=is_reeval,
+                         latency_baseline_ms=baseline_ms, latency_harness_ms=harness_ms)
 
 
 def _offline_result(dimension: str, is_reeval: bool = False) -> dict:
@@ -211,8 +222,12 @@ def _offline_result(dimension: str, is_reeval: bool = False) -> dict:
 
 def _build_result(dimension: str, baseline: int, harness: int, delta: int,
                   root_cause: str | None, test_cases_run: int = 2,
-                  is_reeval: bool = False) -> dict:
+                  is_reeval: bool = False, latency_baseline_ms: float | None = None,
+                  latency_harness_ms: float | None = None) -> dict:
     fixable, structural_reason, status = _classify(dimension, delta, root_cause, is_reeval)
+    if dimension == "latency_delta" and latency_baseline_ms is None:
+        latency_baseline_ms = _OFFLINE_LATENCY["baseline_ms"]
+        latency_harness_ms = _OFFLINE_LATENCY["harness_ms"]
     return {
         "baseline_score": baseline,
         "harness_score": harness,
@@ -223,8 +238,8 @@ def _build_result(dimension: str, baseline: int, harness: int, delta: int,
         "structural_reason": structural_reason,
         "fix_type": _fix_type(dimension) if fixable and delta < -5 else None,
         "test_cases_run": test_cases_run,
-        "latency_baseline_ms": _OFFLINE_LATENCY["baseline_ms"] if dimension == "latency_delta" else None,
-        "latency_harness_ms": _OFFLINE_LATENCY["harness_ms"] if dimension == "latency_delta" else None,
+        "latency_baseline_ms": latency_baseline_ms if dimension == "latency_delta" else None,
+        "latency_harness_ms": latency_harness_ms if dimension == "latency_delta" else None,
     }
 
 
