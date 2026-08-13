@@ -55,6 +55,7 @@ class Session:
 
     report: dict | None = None
     patches: list[dict] = field(default_factory=list)
+    finalizing: bool = False              # guards against double-finalize in Pi mode
 
     def next_question(self) -> Question | None:
         if self.q_cursor < len(self.questions):

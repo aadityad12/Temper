@@ -6,8 +6,6 @@ the expected bands.
 Usage:
     python test_integration.py              # uses cloud offline mode (default)
     CLOUD_OFFLINE=false python test_integration.py  # uses live APIs (slower)
-
-Pass --help for options.
 """
 
 import json
@@ -130,9 +128,6 @@ def run_offline_pipeline() -> tuple[dict, dict]:
     # restore villain_env to clean state
     subprocess.run(["git", "checkout", "fixtures/villain_env/"], cwd=ROOT, check=True,
                    capture_output=True)
-    for f in ["fixtures/villain_env/skills/get_order_usage.md",
-              "fixtures/villain_env/tools/get_order.json"]:
-        (ROOT / f).unlink(missing_ok=True)
 
     # start cloud server
     server_env = {**os.environ, "CLOUD_OFFLINE": "true",
@@ -176,9 +171,6 @@ def run_offline_pipeline() -> tuple[dict, dict]:
         # restore villain_env
         subprocess.run(["git", "checkout", "fixtures/villain_env/"], cwd=ROOT,
                        capture_output=True)
-        for f in ["fixtures/villain_env/skills/get_order_usage.md",
-                  "fixtures/villain_env/tools/get_order.json"]:
-            (ROOT / f).unlink(missing_ok=True)
 
 
 def main() -> int:

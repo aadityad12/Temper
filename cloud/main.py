@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,7 +33,7 @@ from pydantic import BaseModel
 import config  # noqa: F401
 from config import CLOUD_OFFLINE, DEEPSEEK_MODEL, GEMINI_MODEL, HOST_URL, PORT
 from session import (
-    S_AWAITING, S_GENERATING, S_JUDGING, S_READY, S_REGISTERED,
+    S_AWAITING, S_GENERATING, S_JUDGING, S_READY,
     Question, Room, Session,
     bind_session_to_room, create_room, create_session, get_room,
     get_room_for_session, get_session,
@@ -323,8 +323,10 @@ async def _process_single_question(sess: Session, room: Room, question: Question
         "baseline_output_tokens": question.baseline_output_tokens,
     })
 
-    # 5. Auto-finalize when all questions are judged
-    if sess.all_judged():
+    # 5. Auto-finalize when all questions are judged (guard against two concurrent
+    # judge tasks both observing all_judged() and both finalizing)
+    if sess.all_judged() and not sess.finalizing:
+        sess.finalizing = True
         await _pi_finalize(sess, room)
 
 
@@ -499,6 +501,9 @@ async def register(body: RegisterBody):
     # Legacy path: bundle-based
     if body.bundle is None:
         raise HTTPException(status_code=400, detail="Provide either bundle or room_id+token")
+    if not _has_bundle_content(body.bundle):
+        raise HTTPException(status_code=422,
+                            detail="bundle must be an object with system_prompt, skills, or tools")
     sess = create_session(body.bundle)
     sess.status = S_GENERATING
     asyncio.create_task(_run_pipeline(sess))
@@ -538,8 +543,9 @@ async def submit_answer(body: SubmitBody):
 
     print(f"[/submit-answer] {body.session_id}/{body.question_id} latency={body.latency_ms}ms")
 
-    # Pi mode: trigger per-question baseline + judge in background
-    if sess.pi_mode:
+    # Pi mode: trigger per-question baseline + judge in background (skip if already judged
+    # so resubmission is a no-op rather than re-running judge + finalize)
+    if sess.pi_mode and question.judge_result is None:
         room = get_room_for_session(body.session_id)
         if room:
             asyncio.create_task(_process_single_question(sess, room, question))

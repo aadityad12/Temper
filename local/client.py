@@ -32,7 +32,7 @@ def _http(fn):
                 )
             resp.raise_for_status()
             return resp
-        except (httpx.NetworkError, httpx.HTTPStatusError) as exc:
+        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
             last_exc = exc
             if attempt < _MAX_HTTP_RETRIES - 1:
                 print(f"  [http] error ({exc}) — retry in {delay}s")

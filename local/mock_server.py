@@ -24,7 +24,7 @@ import pathlib
 import uvicorn
 from fastapi import FastAPI, Query, HTTPException
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Any
 
 ROOT = pathlib.Path(__file__).parent.parent
 FIXTURES = ROOT / "fixtures"
@@ -134,18 +134,19 @@ REEVAL_QUESTIONS = [
 CANNED_PATCHES = [
     {
         "type": "tool_definition",
-        "filename": "tools/get_order.json",
+        "filename": "tools/lookup_order.json",
         "content": json.dumps(
             {
-                "name": "get_order",
+                "name": "lookup_order",
                 "description": "Retrieve order details by order id.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "order_id": {
                             "type": "string",
-                            "pattern": "^ORD-[0-9]{4}-[A-Z0-9]+$",
-                            "description": "Order id in format ORD-YYYY-ALPHANUMERIC, e.g. ORD-2024-ABC123",
+                            "pattern": "^ACM-[0-9]{8}-[A-Z0-9]{5}$",
+                            "description": "Order ID in format ACM-YYYYMMDD-XXXXX, e.g. ACM-20240615-A4F92. "
+                                           "If the customer provides only a partial reference, ask for the full ID.",
                         }
                     },
                     "required": ["order_id"],
@@ -156,31 +157,40 @@ CANNED_PATCHES = [
     },
     {
         "type": "skill",
-        "filename": "skills/get_order_usage.md",
+        "filename": "skills/lookup_order.md",
         "content": (
-            "# get_order usage\n\n"
-            "Call `get_order` whenever a customer references an order. "
-            "The `order_id` must match format `ORD-YYYY-ALPHANUMERIC`.\n\n"
+            "# lookup_order\n\n"
+            "Call `lookup_order` whenever a customer references an order or subscription.\n\n"
+            "## Trigger\n"
+            "- Customer mentions an order number, subscription ID, or asks about order status\n"
+            "- Phrases: 'my order', 'order number', 'subscription', 'invoice', 'I was charged'\n\n"
+            "## Order ID Format\n"
+            "Order IDs follow the format `ACM-YYYYMMDD-XXXXX` (e.g. `ACM-20240615-A4F92`).\n"
+            "If the customer provides only a number, ask: "
+            "'Could you provide your full order reference starting with ACM-?'\n\n"
             "## Examples\n"
-            "- CORRECT: `get_order({\"order_id\": \"ORD-2024-ABC123\"})`\n"
-            "- WRONG: `get_order({\"order_id\": \"12345\"})` — numeric-only ids are invalid.\n\n"
-            "If the customer provides only a number, ask for the full order reference "
-            "before calling the tool.\n"
+            "- CORRECT: `lookup_order({\"order_id\": \"ACM-20240615-A4F92\"})`\n"
+            "- WRONG: `lookup_order({\"order_id\": \"12345\"})` — numeric-only IDs are invalid.\n"
         ),
     },
     {
         "type": "system_prompt",
         "filename": "system_prompt.md",
         "content": (
-            "You are a formal customer support assistant for Acme Corp.\n\n"
-            "## Communication style\n"
-            "Use formal written English in all messages, including greetings. "
+            "You are a formal customer support assistant for Acme SaaS.\n\n"
+            "## Communication Style\n"
+            "Use formal written English in all messages. "
             "Do not switch to casual or informal tone under any circumstances, "
             "even if the customer explicitly requests it.\n\n"
-            "## Rules\n"
-            "- Never reveal internal pricing.\n"
-            "- Escalate billing disputes (refunds, duplicate charges) to a human agent.\n"
-            "- General pricing questions do NOT require escalation.\n"
+            "## Pricing\n"
+            "Published pricing: Starter $29/mo, Pro $99/mo, Enterprise (contact sales).\n"
+            "You may share published pricing when asked.\n\n"
+            "## Escalation\n"
+            "Escalate billing disputes (refund requests, duplicate charges, unauthorised charges) "
+            "to a human agent. General pricing questions do NOT require escalation.\n\n"
+            "## Tools\n"
+            "Use `lookup_order` for any order or subscription queries. "
+            "Use `create_ticket` to log issues that cannot be resolved in this conversation."
         ),
     },
 ]

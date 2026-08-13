@@ -74,9 +74,10 @@ def run_single(question: dict) -> dict:
         print(f"[baseline] DeepSeek failed for {question['question_id']}: {exc}")
         answer = _OFFLINE_ANSWER
     latency_ms = int((time.monotonic() - t0) * 1000)
+    usage = response.usage if response else None
     return {
         "answer": answer,
         "latency_ms": latency_ms,
-        "input_tokens": response.usage.prompt_tokens if response else 0,
-        "output_tokens": response.usage.completion_tokens if response else 0,
+        "input_tokens": usage.prompt_tokens if usage else 0,
+        "output_tokens": usage.completion_tokens if usage else 0,
     }

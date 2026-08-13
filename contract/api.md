@@ -1,46 +1,18 @@
-# TEMPER API Contract
+# TEMPER API contract
 
-This document is the authoritative interface between the local layer (Dev 1 / Claude Code) and the cloud layer (Dev 2 / Antigravity or FastAPI). **Both devs must sign off before either side writes core logic.** Do not change field names without updating both sides and bumping this doc.
+This reference describes the endpoints implemented by `cloud/main.py` on the default branch. The Python client uses the five evaluation endpoints. Pi room mode also uses room creation, state, and server-sent events.
 
----
+## Common behavior
 
-## Communication model
+- The local default base URL is `http://localhost:8001` when using `.env.example`.
+- Unknown sessions return HTTP 404 with a FastAPI `detail` field.
+- Evaluation sessions are stored in memory and disappear when the process restarts.
+- The server does not currently validate a legacy bundle against `schemas/environment_bundle.schema.json`.
+- The `report` returned by `/results` is a compact projection and does not satisfy the full report schema by itself.
 
-Antigravity is the **server**. Claude Code is the **client**. All traffic is outbound HTTP from local → cloud. No WebSockets, no push, no NAT issues.
+The evaluation dimension keys are:
 
-```
-Claude Code (local)          Antigravity (cloud)
-     │                              │
-     │  POST /register  ──────────► │  creates session, kicks off
-     │  ◄────────────── session_id  │  test generation + baseline
-     │                              │
-     │  GET /next-question ────────►│
-     │  ◄──── {question} or {done} │  serves queue one at a time
-     │                              │
-     │  (run through harness)       │
-     │                              │
-     │  POST /submit-answer ───────►│  stores harness answer + latency
-     │  ◄────────── {received:true} │
-     │                              │
-     │  ... repeat until done ...   │
-     │                              │
-     │  GET /results ──────────────►│  may return {processing} first
-     │  ◄────── report + patches    │
-     │                              │
-     │  POST /reeval ──────────────►│  re-judge patched dims only
-     │  ◄──── reeval_session_id     │
-     │                              │
-     │  GET /results?session_id=... │  same endpoint, new session id
-     │  ◄──── updated report        │
-```
-
----
-
-## Dimension enum
-
-All dimension keys must use exactly these strings throughout both codebases:
-
-```
+```text
 instruction_adherence
 tool_accuracy
 output_format
@@ -49,199 +21,254 @@ latency_delta
 error_recovery
 ```
 
----
+Pi coding-bench rooms return `coding_bench` instead of those six dimensions.
 
-## Endpoints
+## Evaluation endpoints
 
-### POST /register
+### `POST /register`
 
-Ingests the environment bundle. Returns a session id immediately (async generation + baseline starts in the background). Dev 1 → Dev 2.
+Creates an initial evaluation session. Legacy local-client registration requires `bundle`. Pi registration additionally requires a room ID and one-time token.
 
-**Request**
+Local request:
+
 ```json
 {
   "bundle": {
-    "system_prompt": "string | null",
-    "skills": [
-      { "name": "string", "content": "string" }
-    ],
-    "tools": [
-      { "name": "string", "definition": {} }
-    ]
+    "system_prompt": "string or null",
+    "skills": [{"name": "skill_name", "content": "full Markdown"}],
+    "tools": [{"name": "tool_name", "definition": {}}]
   }
 }
 ```
 
-**Response 200**
+Pi request:
+
 ```json
-{ "session_id": "string" }
+{
+  "room_id": "room identifier",
+  "token": "one-time join token",
+  "bundle": {
+    "system_prompt": "string or null",
+    "skills": [],
+    "tools": []
+  },
+  "bench": false
+}
 ```
 
-**Response 422** — schema-invalid bundle
+Success:
+
 ```json
-{ "error": "string" }
+{"session_id": "sess_12345678"}
 ```
 
-**Side effect:** server begins Gemini test-question generation and bare-DeepSeek baseline run in the background. `/next-question` will block (return `{"status":"not_ready"}`) until generation completes.
+Implemented errors include:
 
----
+| Status | Condition |
+|---:|---|
+| 400 | Neither a bundle nor room credentials were provided, or a Pi bundle has no prompt, skills, or tools. |
+| 403 | Room ID and join token do not match. |
+| 409 | Join token was already used or the room already has a session. |
+| 422 | The legacy bundle is not an object or contains none of `system_prompt`, `skills`, or `tools`; or FastAPI could not validate the outer request body. The body uses `detail`, not `error`. |
 
-### GET /next-question
+The local path starts question generation and the batch bare-model baseline in an asynchronous task. The Pi path starts question generation first and runs a bare-model answer after each Pi submission.
 
-Pops the next unanswered question for a session. Dev 1 polls this in a loop.
+### `GET /next-question`
 
-**Request**
+```http
+GET /next-question?session_id=sess_12345678
 ```
-GET /next-question?session_id=<string>
+
+Possible successful bodies:
+
+```json
+{"status": "not_ready"}
 ```
 
-**Response — question available**
 ```json
 {
   "status": "question",
-  "question_id": "string",
-  "dimension": "<dimension enum>",
-  "prompt": "string"
+  "question_id": "q_ia_1",
+  "dimension": "instruction_adherence",
+  "prompt": "Question text"
 }
 ```
 
-**Response — all questions answered**
 ```json
-{ "status": "done" }
+{"status": "done"}
 ```
 
-**Response — generation still running**
-```json
-{ "status": "not_ready" }
-```
+The endpoint advances an in-memory cursor when it serves a question. It does not wait for the prior question's answer before serving the next one.
 
-Client behavior: on `not_ready`, back off and retry (start at 2s, cap at 10s).
+The local client retries `not_ready` with exponential backoff starting at 2 seconds and capped at 10 seconds.
 
----
+### `POST /submit-answer`
 
-### POST /submit-answer
-
-Submits the local harness answer + measured latency for a question. Dev 1 → Dev 2.
-
-**Request**
 ```json
 {
-  "session_id": "string",
-  "question_id": "string",
-  "answer": "string",
-  "latency_ms": 1234
+  "session_id": "sess_12345678",
+  "question_id": "q_ia_1",
+  "answer": "serialized answer text",
+  "latency_ms": 312,
+  "input_tokens": 42,
+  "output_tokens": 87
 }
 ```
 
-`answer` must include any tool calls the model made, serialized as a string (e.g. JSON blob for tool calls).
+`input_tokens` and `output_tokens` are optional. The dashboard shows them when the Pi client supplies them. `latency_ms` is required by the request model.
 
-`latency_ms` measures inference time only (wall-clock around the DeepSeek call, excluding local assembly).
+Success:
 
-**Response 200**
 ```json
-{ "received": true }
+{"received": true}
 ```
 
-**Idempotency:** re-submitting the same `question_id` updates rather than duplicates.
+Unknown sessions or question IDs return HTTP 404. Submitting the same question ID again replaces its stored answer. On the default branch, repeated Pi submissions can also start repeated background judge tasks.
 
-**Side effect:** when the last answer arrives the server advances status to `judging` (triggers Gemini evaluation).
+### `GET /results`
 
----
-
-### GET /results
-
-Returns the full evaluation report once judging is complete. Dev 1 polls this after the loop ends.
-
-**Request**
-```
-GET /results?session_id=<string>
+```http
+GET /results?session_id=sess_12345678
 ```
 
-**Response — judging still running**
+While generation, answer collection, or judging is incomplete:
+
 ```json
-{ "status": "processing" }
+{"status": "processing"}
 ```
 
-**Response — ready**
+When ready:
+
 ```json
 {
   "status": "ready",
   "report": {
     "dimensions": {
-      "<dimension enum>": {
+      "tool_accuracy": {
         "baseline_score": 72,
         "harness_score": 31,
         "delta": -41,
-        "root_cause": "string | null",
-        "fixable": true
+        "status": "NEEDS_PATCH",
+        "root_cause": "string or null",
+        "fixable": true,
+        "structural_reason": null,
+        "fix_type": "tool_definition",
+        "test_cases_run": 2,
+        "latency_baseline_ms": null,
+        "latency_harness_ms": null
       }
     }
   },
   "patches": [
     {
-      "type": "skill | system_prompt | tool_definition",
-      "filename": "string",
-      "content": "string"
+      "type": "tool_definition",
+      "filename": "tools/lookup_order.json",
+      "content": "complete replacement file"
     }
   ]
 }
 ```
 
-Client behavior on `processing`: back off and retry (start at 3s, cap at 15s).
+The local client retries `processing` with exponential backoff starting at 3 seconds and capped at 15 seconds.
 
-This endpoint works for both initial session ids and re-eval session ids.
+### `POST /reeval`
 
----
+Creates a new session linked to an existing session ID. The server does not verify that dimension names are members of the documented enum.
 
-### POST /reeval
-
-Triggers re-evaluation of specific dimensions after patches have been applied. Dev 1 → Dev 2.
-
-**Request**
 ```json
 {
-  "session_id": "string",
+  "session_id": "sess_12345678",
   "dimensions": ["instruction_adherence", "tool_accuracy"],
   "updated_bundle": {
-    "system_prompt": "string | null",
-    "skills": [ { "name": "string", "content": "string" } ],
-    "tools":  [ { "name": "string", "definition": {} } ]
+    "system_prompt": "replacement prompt",
+    "skills": [],
+    "tools": []
   }
 }
 ```
 
-**Response 200**
+Success:
+
 ```json
-{ "reeval_session_id": "string" }
+{"reeval_session_id": "reeval_12345678"}
 ```
 
-After receiving `reeval_session_id`, Dev 1 runs the test loop again (same `/next-question` → `/submit-answer` flow) under this new session id — answering only the re-served (patched-dimension) questions — then polls `GET /results?session_id=<reeval_session_id>`.
+The client repeats the `/next-question`, `/submit-answer`, and `/results` loop with the new session ID. Question generation is limited to the requested dimensions.
 
----
+## Pi room endpoints
 
-## Latency Delta
+### `POST /rooms/create`
 
-`latency_delta` is **not** an LLM-judged dimension. It has no generated questions. The server computes it from `latency_ms` values submitted with answers to the other dimensions' questions, compared against `latency_baseline_ms` collected during the baseline run.
+The optional `bench=true` query parameter puts the eventual Pi session into coding-bench mode.
 
-The client must submit `latency_ms` on every answer (not just latency_delta questions) so the server has a representative timing sample.
+```http
+POST /rooms/create?bench=false
+```
 
----
+Success:
 
-## Polling semantics summary
+```json
+{
+  "room_id": "12-character identifier",
+  "join_token": "one-time token",
+  "dashboard_key": "reusable browser key",
+  "token": "backward-compatible alias of join_token",
+  "dashboard_url": "http://localhost:8001/room/ROOM?key=KEY",
+  "connection_block": "instructions for the Pi agent"
+}
+```
 
-| Endpoint | Transient status | Retry start | Retry cap |
-|---|---|---|---|
-| GET /next-question | `not_ready` | 2s | 10s |
-| GET /results | `processing` | 3s | 15s |
+The process stores both credentials in memory. The dashboard key appears in the URL query string.
 
-Use exponential backoff within these bounds. Log retries so the user sees progress.
+### `GET /rooms/{room_id}/state`
 
----
+```http
+GET /rooms/ROOM/state?key=DASHBOARD_KEY
+```
 
-## Dev 1 sign-off
+Returns a snapshot containing:
 
-- [ ] Reviewed and agreed (comment on issue #37)
+```json
+{
+  "room_id": "ROOM",
+  "pi_connected": false,
+  "status": "waiting",
+  "questions": [],
+  "report": null,
+  "patches": [],
+  "baseline_model": "deepseek-chat",
+  "judge_model": "gemini-3.5-flash"
+}
+```
 
-## Dev 2 sign-off
+An unknown room or incorrect key returns HTTP 403. The response does not distinguish those cases.
 
-- [ ] Reviewed and agreed (comment on issue #37)
+### `GET /rooms/{room_id}/stream`
+
+```http
+GET /rooms/ROOM/stream?key=DASHBOARD_KEY
+```
+
+The endpoint returns `text/event-stream`, sends a comment ping every 30 seconds while idle, and emits JSON in `data:` frames.
+
+Implemented event types are:
+
+| Event | Main fields |
+|---|---|
+| `connected` | `room_id` |
+| `pi_connected` | none |
+| `questions_ready` | `questions` |
+| `pi_submitted` | question ID, dimension, latency, token counts |
+| `question_judged` | scores, delta, verdict, latency, token counts |
+| `session_complete` | report and patches |
+
+## Current latency behavior
+
+The request contract requires harness `latency_ms`. Scoring behaves as follows:
+
+- Pi per-question mode computes latency scores from the baseline and Pi timing on `latency_delta` questions.
+- Batch mode averages the baseline and harness timing fields for `latency_delta` questions.
+- Both paths map time to `max(0, 100 - floor(milliseconds / 20))` and compute harness minus baseline.
+- When either side has no usable timing data, the service returns the scripted fallback timing and score values.
+
+This score is a coarse project-specific transformation, not a controlled performance benchmark. It does not isolate network, provider, or model variance.
