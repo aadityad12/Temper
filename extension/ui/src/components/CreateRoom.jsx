@@ -46,6 +46,17 @@ const s = {
     fontWeight: 600,
     transition: 'opacity 0.15s',
   },
+  btnSecondary: {
+    width: '100%',
+    padding: '0.85rem',
+    background: 'transparent',
+    color: 'var(--accent)',
+    border: '1px solid var(--accent)',
+    borderRadius: '8px',
+    fontSize: '1rem',
+    fontWeight: 600,
+    transition: 'opacity 0.15s',
+  },
   error: {
     color: 'var(--red)',
     fontSize: '0.85rem',
@@ -55,21 +66,21 @@ const s = {
 }
 
 export default function CreateRoom() {
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(null)
   const [error, setError] = useState(null)
   const [room, setRoom] = useState(null)
   const navigate = useNavigate()
 
-  async function handleCreate() {
-    setLoading(true)
+  async function handleCreate(bench = false) {
+    setLoading(bench ? 'bench' : 'standard')
     setError(null)
     try {
-      const data = await createRoom()
+      const data = await createRoom(bench)
       setRoom(data)
     } catch (e) {
       setError(e.message)
     } finally {
-      setLoading(false)
+      setLoading(null)
     }
   }
 
@@ -93,10 +104,17 @@ export default function CreateRoom() {
             </p>
             <button
               style={{ ...s.btn, opacity: loading ? 0.6 : 1 }}
-              onClick={handleCreate}
-              disabled={loading}
+              onClick={() => handleCreate(false)}
+              disabled={!!loading}
             >
-              {loading ? 'Creating room…' : 'Create Room'}
+              {loading === 'standard' ? 'Creating room…' : 'Create Room'}
+            </button>
+            <button
+              style={{ ...s.btnSecondary, marginTop: '0.75rem', opacity: loading ? 0.6 : 1 }}
+              onClick={() => handleCreate(true)}
+              disabled={!!loading}
+            >
+              {loading === 'bench' ? 'Creating demo…' : 'Create SlopCode Demo Room'}
             </button>
             {error && <div style={s.error}>{error}</div>}
           </>

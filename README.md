@@ -55,7 +55,7 @@ The core protocol uses outbound HTTP polling. Only the dashboard uses server-sen
 - Validates collected bundles and sample reports against Draft 7 JSON Schemas.
 - Supports deterministic offline execution with no model API keys.
 - Uses one-time Pi join tokens, separate dashboard keys, and resumable room snapshots.
-- Includes a secondary `two_sum` coding check with five deterministic subprocess tests.
+- Includes a secondary six-checkpoint SlopLedger coding trajectory scored with cumulative functional cases and bounded static-complexity penalties.
 
 ## Quick start
 
@@ -66,7 +66,7 @@ The core protocol uses outbound HTTP polling. Only the dashboard uses server-sen
 - GNU Make for the convenience commands
 - Node.js 18, or Node.js 20 or newer, only for rebuilding the dashboard
 
-The repository's `make install-local` and `make install-cloud` targets invoke `python`, which is not available on every system. The explicit `python3` setup below is more portable on macOS and Linux.
+The `make install-local` and `make install-cloud` targets provide the same setup using `python3`.
 
 ```bash
 git clone https://github.com/aadityad12/Temper.git
@@ -90,6 +90,7 @@ Run the deterministic client/server integration path:
 ```bash
 make validate-schemas
 make test-integration
+make test-slopcode
 ```
 
 `make test-integration`, `make test-local`, and `make test-cloud` restore `fixtures/villain_env/` with `git checkout`. Do not run them while you have uncommitted changes in that directory.
@@ -157,6 +158,7 @@ Never commit `.env`. It is ignored by the repository.
 | `make demo` | The committed pre-evaluation and re-evaluation reports render with Rich. |
 | `make validate-schemas` | `fixtures/sample_bundle.json` and `fixtures/sample_eval_report.json` validate against their schemas. |
 | `make test-integration` | The offline FastAPI pipeline, local client loop, patch writing, re-evaluation, and score-band assertions. |
+| `make test-slopcode` | The SlopLedger reference solution, incomplete-solution discrimination, and final audit checkpoint. |
 | `npm --prefix extension/ui ci && npm --prefix extension/ui run build` | Reproducible dashboard dependency installation and production bundle generation into `cloud/ui_dist/`. |
 
 There is no configured linter, CI workflow, Python unit-test suite, or UI test suite.
@@ -192,6 +194,7 @@ The offline re-evaluation uses another fixed score bank. The integration test as
 - `/register` rejects empty or malformed legacy bundles, but `/results` still does not return the full shape required by `schemas/eval_report.schema.json`.
 - Generated patch filenames are written directly under the target directory without path containment checks. Review every patch before applying it to untrusted input.
 - Rooms and sessions have no persistence or expiry. Dashboard credentials are placed in query strings.
+- The coding benchmark executes submitted Python in an unsandboxed subprocess. Use it only with trusted code on a local service; it is not safe to expose to untrusted users.
 - A clean `npm audit` reports six advisories in the locked dashboard dependency tree: three high and three moderate. Update and review dependencies before exposing the development server.
 - The previously documented hosted deployment could not be resolved during verification and is not presented as an active demo.
 
